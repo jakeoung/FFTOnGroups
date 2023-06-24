@@ -140,12 +140,11 @@ function convert_c2polar(f, npsi=nothing)
     return f_polar_real .+ im .* f_polar_im, rr
 end
 
-# input: f [H, W, thetas]
-# return: fhat(r,p,q)
-# [m, n, p], m:theta, n:phi
+# Input: f [H, W, thetas]
+# Return: fhat [m, n, p] m:theta, n:phi
 function fft_SE2(f; use_cont_ft=false)
     npsi = size(f, 3)
-    bnormalize = true
+    bnormalize = false
 
     #--------------------------------------------------
     # STEP 1. IFFT for f
@@ -205,7 +204,7 @@ end
 
 # inp: fhat_ of shape [m, n, p] (theta, psi, p)
 function adjoint_fft_SE2(fhat_, H, W; mm=nothing, use_cont_ft=false)
-    bnormalize = true
+    bnormalize = false
     if isnothing(mm)
         @assert mod(size(fhat_, 1), 2) == 0
         mm = collect(-size(fhat_, 1)//2 : size(fhat_, 1)//2-1)

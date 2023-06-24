@@ -1,7 +1,8 @@
 # # Example: Fourier transform on SE(2)
-
-using DrWatson, Test
 using Plots
+using Statistics
+# using FFTOnGroups
+using DrWatson
 
 @quickactivate "FFTOnGroups"
 n01(x) = (x .- minimum(x)) ./ (maximum(x) - minimum(x))
@@ -16,7 +17,6 @@ H, W = size(f_test)
 fhat0_test, pp, mm, nn = fft_SE2(f_test) # fhat(m,n,p)
 @time f1_adjoint = adjoint_fft_SE2(fhat0_test, H, W);
 @time f1 = ifft_SE2(fhat0_test, H, W);
-
 
 @show mean(abs.(f1_adjoint .- f_test))
 @show mean(abs.(f1 .- f_test))
