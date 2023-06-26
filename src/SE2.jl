@@ -45,9 +45,9 @@ function map_coordinates(img, coord)
     return out
 end
 
-function c2p_coords_spline(H, W, r_sample_factor = 1, npsi=nothing)
-    Hhalf = H // 2
-    Whalf = W // 2
+function c2p_coords_spline(H, W, r_sample_factor, npsi=nothing)
+    Hhalf = H // 2 
+    Whalf = W // 2 
 
     spline_order = 1
     r_max = sqrt(Hhalf^2 + Whalf^2) 
@@ -120,10 +120,10 @@ function extend_f(f, coord)
     return f_extended, coord
 end
 
-function convert_c2polar(f, npsi=nothing)
+function convert_c2polar(f, npsi=nothing, r_sample_factor=8)
     # warp(f, c2)
     H, W, ntheta = size(f)
-    coord, rr, tt = c2p_coords_spline(H, W, 2, npsi)
+    coord, rr, tt = c2p_coords_spline(H, W, r_sample_factor, npsi)
 
     f_extended, coord = extend_f(f, coord)
 
@@ -140,9 +140,19 @@ function convert_c2polar(f, npsi=nothing)
     return f_polar_real .+ im .* f_polar_im, rr
 end
 
-# Input: f [H, W, thetas]
-# Return: fhat [m, n, p] m:theta, n:phi
-function fft_SE2(f; use_cont_ft=false)
+@doc raw"""
+    fft_SE2(f; use_cont_ft=false) -> fhat
+
+Returns the Fourier transform fhat [m, n, p] m:theta, n:phi
+
+# Arguments
+- f [H, W, thetas]
+
+# References
+- https://docs.julialang.org/en/v1/manual/documentation/index.html
+- the book by Chirikjian 
+"""
+function fft_SE2(f; r_sample_factor=64, use_cont_ft=false)
     npsi = size(f, 3)
     bnormalize = false
 
@@ -159,7 +169,7 @@ function fft_SE2(f; use_cont_ft=false)
         f1s = conj(f1s) / (H*W)
     else
         f1s = fftshift(ifft(fs, (1,2)), (1,2))
-        f1s *= H*W / sqrt(H*W)
+        # f1s *= H*W / sqrt(H*W)
         # f1s *= (2*pi/H)*(2*pi/W) / sqrt(H*W) * H*W
     end
 
@@ -169,7 +179,7 @@ function fft_SE2(f; use_cont_ft=false)
     # 2. change cartesian to polar coordinates
     #--------------------------------------------------
     # f1p [r, phi, theta]
-    f1p, pp = convert_c2polar(f1s, npsi)
+    f1p, pp = convert_c2polar(f1s, npsi, r_sample_factor)
 
     mm = Int.(fftshift(fftfreq(size(f1p, 3), size(f1p, 3))))
     nn = Int.(fftshift(fftfreq(size(f1p, 2), size(f1p, 2))))
@@ -264,7 +274,7 @@ function adjoint_fft_SE2(fhat_, H, W; mm=nothing, use_cont_ft=false)
     end
 
     f = fft(fftshift(fs, (1,2)), (1,2)) # optional
-    f = ifftshift(f, (1,2))  / sqrt(H*W)
+    f = ifftshift(f, (1,2)) # / sqrt(H*W)
 
     return f 
 end
@@ -344,6 +354,7 @@ function ifft_SE2(fhat_, H, W; mm=nothing, use_cont_ft=false)
         f[:,:,itheta] = sum(reshape(factor, 1, 1, :) .* f0, dims=3)
     end
     
-    return f / (2.0*pi) / 10
+    return f # / (2.0*pi) / 10
 end
+
 

@@ -6,7 +6,7 @@ using CoordinateTransformations
 
 using FFTW
 using NFFT
-using FINUFFT
+# using FINUFFT
 
 n01(x) = (x .- minimum(x)) ./ (maximum(x) - minimum(x))
 
@@ -364,21 +364,21 @@ end
 
 
 # function test_SE2()
-    f_test = zeros(40,40,42)
-    f_test[10:21, 11:30, :] .= 1.0
-    fhat0_test, pp, mm, nn = fft_SE2(f_test)
-    @time f1_adjoint = adjoint_fft_SE2(fhat0_test, size(f_test, 1), size(f_test,2));
-    @time f1 = ifft_SE2(fhat0_test, size(f_test, 1), size(f_test,2));
+    # f_test = zeros(40,40,42)
+    # f_test[10:21, 11:30, :] .= 1.0
+    # fhat0_test, pp, mm, nn = fft_SE2(f_test)
+    # @time f1_adjoint = adjoint_fft_SE2(fhat0_test, size(f_test, 1), size(f_test,2));
+    # @time f1 = ifft_SE2(fhat0_test, size(f_test, 1), size(f_test,2));
 
-    @show sum(abs.(f_test .- f1)) / length(f_test)
-    save("../result/test_SE2.png", n01(abs.(f1[:,:,3])))
+    # @show sum(abs.(f_test .- f1)) / length(f_test)
+    # save("../result/test_SE2.png", n01(abs.(f1[:,:,3])))
 
-    @show sum(abs.(f_test .- f1_adjoint)) / length(f_test)
-    save("../result/test_SE2_adjoint.png", n01(abs.(f1_adjoint[:,:,3])))
+    # @show sum(abs.(f_test .- f1_adjoint)) / length(f_test)
+    # save("../result/test_SE2_adjoint.png", n01(abs.(f1_adjoint[:,:,3])))
 
-    save("../result/test_SE2_answer.png", n01(abs.(f_test[:,:,3])))
+    # save("../result/test_SE2_answer.png", n01(abs.(f_test[:,:,3])))
 
-    @show maximum(abs.(f1)), maximum(abs.(f1_adjoint))
+    # @show maximum(abs.(f1)), maximum(abs.(f1_adjoint))
 # end
 
 function test_conv()
@@ -412,7 +412,8 @@ function imgpolarcoord(img::Array{Float64,2})
 end
 
 
-function fft_polar(f, use_nfft=false)
+function fft_SE2_polar(f, use_nfft=false)
+    bnormalize = false
     H, W, ntheta = size(f)
 
     Hh = H // 2
@@ -420,7 +421,7 @@ function fft_polar(f, use_nfft=false)
     npsi = ntheta
 
     r_max = sqrt(Hh^2 + Wh^2)
-    oversampling_factor = 1
+    oversampling_factor = 4
     n_samples_r = oversampling_factor * (ceil(Int, r_max) + 1)
     if isnothing(npsi)
         npsi = oversampling_factor * (ceil(Int, 2*pi*r_max))
@@ -443,8 +444,8 @@ function fft_polar(f, use_nfft=false)
 
             x = rval * cos(tval)
             y = rval * sin(tval)
-            coord[2,cnt] = -y
-            coord[1,cnt] = x
+            coord[1,cnt] = y
+            coord[2,cnt] = x
             cnt += 1
         end
     end
@@ -452,20 +453,20 @@ function fft_polar(f, use_nfft=false)
     
 
     # 원점대칭 -> leads to e(-ipr) instead of e(ipr)
-    if use_nfft == false 
-        Af = mapslices(x -> nufft2d2(coord[2,:], coord[1,:], 1, 1e-9, x), f, dims=[1,2]) / (H*W)
-        At = nothing
+    # if use_nfft == false 
+    #     Af = mapslices(x -> nufft2d2(coord[2,:], coord[1,:], 1, 1e-9, x), f, dims=[1,2]) / (H*W)
+    #     At = nothing
 
-        # A = plan_nfft(coord, (H, W)) # , reltol=1e-9
-        # At = adjoint(A)
+    #     # A = plan_nfft(coord, (H, W)) # , reltol=1e-9
+    #     # At = adjoint(A)
         
-    else 
+    # else 
         coord = clamp.(coord, -0.5, 0.5)
         A = plan_nfft(coord, (H, W)) # , reltol=1e-9
-        Af = mapslices(x -> A*conj(x), f, dims=[1,2]) / (H*W)
+        Af = mapslices(x -> A*conj(x), f, dims=[1,2]) # / (H*W)
         Af = conj(Af)
         At = adjoint(A)
-    end
+    # end
 
     # debug visualize Af
     # debug Af_img = reshape(Af, size(f))
@@ -475,13 +476,15 @@ function fft_polar(f, use_nfft=false)
     mm = Int.(fftshift(fftfreq(ntheta, ntheta)))
     nn = Int.(fftshift(fftfreq(length(t), length(t))))
 
+    @show size(Af)
     f1polar = reshape(Af, :, length(nn), ntheta)
+    @show size(f1polar)
     
     #---------------------------
     # 3. theta integration
     # f2 will be f2(r, phi, theta)
     #---------------------------
-    f2 = conj(fftshift(fft(conj(f1polar), (3)), (3))) / ntheta
+    f2 = conj(fftshift(fft(conj(f1polar), (3)), (3))) # / ntheta
     # f2 = reshape(f1phat, :, length(nn), ntheta)
 
     varphi = LinRange(0.0, 2*pi, size(f2, 2)+1)[1:end-1]
@@ -492,59 +495,17 @@ function fft_polar(f, use_nfft=false)
     # 4. phi integration
     #--------------------------------------------------
     # fhat = fhat(r,p,q)
-    fhat = conj(fftshift( fft(conj(f2), (2)) , (2))) / size(f2, 2)
+    fhat = conj(fftshift( fft(conj(f2), (2)) , (2))) # / size(f2, 2)
 
     # [p, n, m] -> [m, n, p]
     fhat = permutedims(fhat, (3, 2, 1))
     return fhat, pp, phis, mm, nn, At, coord
 end
 
-# inp: fhat of shape [m, n, p] (theta, phi, r)
-function ifft_polar(fhat_, mm, nn, pp, phis, thetas, At, H, W)
-    fhat = permutedims(fhat_, (3,2,1)) 
-    ntheta = size(fhat, 3)
-    # now fhat = fhat(r, phi, theta) = fhat(r, n, m)
-
-    #--------------------------------------------------
-    # 1. compute ftilde [r n n_outer]
-    #--------------------------------------------------
-    ftilde = similar(fhat)
-    for (in, n) in enumerate(nn) # n
-        phi = phis[in]
-        for (ip, p) in enumerate(pp) # r
-            for (in2, n2) in enumerate(nn) # n
-                ftilde[ip,in,in2] = sum(fhat[ip, in2, :] .* exp.(im .* (n2 .- mm) * phi))
-                ftilde[ip,in,in2] = ftilde[ip,in,in2] #* p
-            end
-        end
-    end
-    @show "ftilde done"
-
-    #--------------------------------------------------
-    # 1. INFFT
-    #--------------------------------------------------
-    # mapslices(x -> A*x, f, dims=[1,2])
-    f1pvector = reshape(ftilde, :, length(nn))
-    out0 = zeros(ComplexF64, H, W, length(nn))
-    for n = 1 : length(nn)
-        out0[:, :, n] = conj(At * conj(f1pvector[:,n]))
-    end
-    # out0 = out0 / ( length(pp) * length(phis) )
-    @show "NFFT done"
-
-    out = zeros(ComplexF64, H, W, length(thetas))
-    for (imm, m) in enumerate(mm) # m, theta
-        # temp_HxW = zeros(ComplexF64, H, W)
-        for (in, n) in enumerate(nn)
-            out[:,:,imm] += exp(-im .* n * thetas[imm]) * out0[:, :, in]
-        end
-    end
-    out = out / (2.0*pi)
-    return out
-end
 
 # # inp: fhat of shape [m, n, p] (theta, phi, r)
 function ifft_polar0(fhat_, mm, At, H, W, coord)
+    global f1pvector
     fhat = permutedims(fhat_, (3,2,1)) 
     ntheta = size(fhat, 3)
     # now fhat = fhat(r, phi, theta)
@@ -552,7 +513,7 @@ function ifft_polar0(fhat_, mm, At, H, W, coord)
     #--------------------------------------------------
     # 4. phi integration
     #--------------------------------------------------
-    f2f = conj(ifft(ifftshift(conj(fhat), (2)) *size(fhat, 2), (2)))
+    f2f = conj(ifft(ifftshift(conj(fhat), (2)), (2)))
 
     psi = LinRange(0.0, 2*pi, size(f2f, 2)+1)[1:end-1]
     factor = exp.(im .* reshape(psi, 1,:,1) .* reshape(mm, 1,1,:))
@@ -561,7 +522,7 @@ function ifft_polar0(fhat_, mm, At, H, W, coord)
     #--------------------------------------------------
     # 3. integration on SO(2)
     #--------------------------------------------------
-    f1p = conj(ifft(ifftshift(conj(f2 * size(f2, 3)), (3)), (3)))
+    f1p = conj(ifft(ifftshift(conj(f2), (3)), (3)))
     # f1p = ifftshift(f1p, (3)) / size(f1p, 3)
     
     # mapslices(x -> A*x, f, dims=[1,2])
@@ -721,48 +682,48 @@ function ifft_polar(fhat_, mm, nn, pp, phis, thetas, At, H, W)
 end
 
 # # inp: fhat of shape [m, n, p] (theta, phi, r)
-function ifft_polar0(fhat_, mm, At, H, W, coord)
-    fhat = permutedims(fhat_, (3,2,1)) 
-    ntheta = size(fhat, 3)
-    # now fhat = fhat(r, phi, theta)
+# function ifft_polar0(fhat_, mm, At, H, W, coord)
+#     fhat = permutedims(fhat_, (3,2,1)) 
+#     ntheta = size(fhat, 3)
+#     # now fhat = fhat(r, phi, theta)
 
-    #--------------------------------------------------
-    # 4. phi integration
-    #--------------------------------------------------
-    f2f = conj(ifft(ifftshift(conj(fhat), (2)) *size(fhat, 2), (2)))
+#     #--------------------------------------------------
+#     # 4. phi integration
+#     #--------------------------------------------------
+#     f2f = conj(ifft(ifftshift(conj(fhat), (2)) *size(fhat, 2), (2)))
 
-    psi = LinRange(0.0, 2*pi, size(f2f, 2)+1)[1:end-1]
-    factor = exp.(im .* reshape(psi, 1,:,1) .* reshape(mm, 1,1,:))
-    f2 = f2f .* factor
+#     psi = LinRange(0.0, 2*pi, size(f2f, 2)+1)[1:end-1]
+#     factor = exp.(im .* reshape(psi, 1,:,1) .* reshape(mm, 1,1,:))
+#     f2 = f2f .* factor
 
-    #--------------------------------------------------
-    # 3. integration on SO(2)
-    #--------------------------------------------------
-    f1p = conj(ifft(ifftshift(conj(f2 * size(f2, 3)), (3)), (3)))
-    # f1p = ifftshift(f1p, (3)) / size(f1p, 3)
+#     #--------------------------------------------------
+#     # 3. integration on SO(2)
+#     #--------------------------------------------------
+#     f1p = conj(ifft(ifftshift(conj(f2 * size(f2, 3)), (3)), (3)))
+#     # f1p = ifftshift(f1p, (3)) / size(f1p, 3)
     
-    # mapslices(x -> A*x, f, dims=[1,2])
-    f1pvector = reshape(f1p, :, ntheta)
+#     # mapslices(x -> A*x, f, dims=[1,2])
+#     f1pvector = reshape(f1p, :, ntheta)
     
-    out = zeros(ComplexF64, H, W, ntheta)
+#     out = zeros(ComplexF64, H, W, ntheta)
 
-    if ~isnothing(At)
-        for i = 1 : ntheta
-            out[:, :, i] = At * conj(f1pvector[:,i])
-        end 
-        out = conj(out)
-    else 
-        # use nufft
-        # polar -> cartesian
-        # input non-uniform. output uniform
-        for i = 1 : ntheta 
-            nufft2d1!(coord[2,:], coord[1,:], f1pvector[:,i], -1, 1e-6, out[:,:,i])
-        end
-        # out = mapslices(x -> nufft2d1(coord[2,:], coord[1,:], x, -1, 1e-6, H, W), f1pvector, dims=[1])
-        out = out / (H*W)
-    end
-    return out
-end
+#     if ~isnothing(At)
+#         for i = 1 : ntheta
+#             out[:, :, i] = At * conj(f1pvector[:,i])
+#         end 
+#         out = conj(out)
+#     else 
+#         # use nufft
+#         # polar -> cartesian
+#         # input non-uniform. output uniform
+#         for i = 1 : ntheta 
+#             nufft2d1!(coord[2,:], coord[1,:], f1pvector[:,i], -1, 1e-6, out[:,:,i])
+#         end
+#         # out = mapslices(x -> nufft2d1(coord[2,:], coord[1,:], x, -1, 1e-6, H, W), f1pvector, dims=[1])
+#         out = out / (H*W)
+#     end
+#     return out
+# end
 
 
 # f_trues = 1.0 ./ (fhat_inv_xx.^2 .+ 1.0)
@@ -773,3 +734,61 @@ end
 
 # plot(abs.(fhat_inv), label="est")
 # plot!(f_trues, label="true")
+
+
+
+
+
+
+
+# # inp: fhat of shape [m, n, p] (theta, phi, r)
+# function ifft_SE2_polar(fhat_, mm, nn, pp, phis, thetas, At, H, W)
+#     bnormalize = false
+#     if isnothing(mm)
+#         @assert mod(size(fhat_, 1), 2) == 0
+#         mm = collect(-size(fhat_, 1)//2 : size(fhat_, 1)//2-1)
+#     end
+#     fhat = permutedims(fhat_, (3,2,1))
+#     ntheta = size(fhat, 3)
+#     # now (r, psi, theta)
+
+#     #--------------------------------------------------
+#     # 4. psi integration
+#     #--------------------------------------------------
+#     f2f = conj(ifft(ifftshift(conj(fhat), (2)), (2)))
+#     # (bnormalize) && (f2f /= (2*pi / size(f2f, 2)))
+#     (bnormalize) && (f2f *= size(f2f, 2) / sqrt(size(f2f, 2)) )
+    
+#     psi = LinRange(0.0, 2*pi, size(f2f, 2)+1)[1:end-1]
+#     factor = exp.(im .* reshape(psi, 1,:,1) .* reshape(mm, 1,1,:))
+#     f2 = f2f .* factor
+
+#     #--------------------------------------------------
+#     # 3. integration on SO(2)
+#     #--------------------------------------------------
+#     f1p = conj(ifft(ifftshift(conj(f2), (3)), (3)))
+#     # (bnormalize) && (f1p /= (2*pi / ntheta))
+#     (bnormalize) && (f1p *= ntheta / sqrt(ntheta)  )
+
+#     #--------------------------------------------------
+#     # 1. INFFT
+#     #--------------------------------------------------
+#     # mapslices(x -> A*x, f, dims=[1,2])
+#     f1pvector = reshape(f1p, :, length(nn))
+#     out0 = zeros(ComplexF64, H, W, length(nn))
+#     for n = 1 : length(nn)
+#         out0[:, :, n] = conj(At * conj(f1pvector[:,n]))
+#     end
+#     # out0 = out0 / ( length(pp) * length(phis) )
+#     @show "NFFT done"
+
+#     out = zeros(ComplexF64, H, W, length(thetas))
+#     for (imm, m) in enumerate(mm) # m, theta
+#         # temp_HxW = zeros(ComplexF64, H, W)
+#         for (in, n) in enumerate(nn)
+#             out[:,:,imm] += exp(-im .* n * thetas[imm]) * out0[:, :, in]
+#         end
+#     end
+#     out = out / (2.0*pi)
+#     return out
+# end
