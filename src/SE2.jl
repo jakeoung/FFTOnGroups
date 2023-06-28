@@ -34,8 +34,9 @@ end
 
 function map_coordinates(img, coord)
     out = similar(coord[1])
-    itp = Interpolations.interpolate(img, BSpline(Linear()), OnCell())
-    etpf = extrapolate(itp, Line())   # gives 1 on the left edge and 7 on the right edge
+    # itp = Interpolations.interpolate(img, BSpline(Linear()), OnCell())
+    itp = Interpolations.interpolate(img, BSpline(Quadratic(Reflect(OnCell()))), OnCell())
+    etpf = extrapolate(itp, Line()) 
     # etpf = extrapolate(itp, Flat())   # gives 1 on the left edge and 7 on the right edge
 
     for i=1:size(out,1), j=1:size(out,2)
@@ -57,7 +58,7 @@ function c2p_coords_spline(H, W, r_sample_factor, npsi=nothing)
         npsi = r_sample_factor * (ceil(Int, 2*pi*r_max))
     end
 
-    r = LinRange(0, r_max, n_samples_r) 
+    r = LinRange(0.00001, r_max, n_samples_r) 
     t = LinRange(0, 2*pi, npsi+1)[1:end-1]
 
     # meshgrid (ij)
@@ -120,12 +121,16 @@ function extend_f(f, coord)
     return f_extended, coord
 end
 
-function convert_c2polar(f, npsi=nothing, r_sample_factor=8)
+function convert_c2polar(f, npsi=nothing, r_sample_factor=8, extend=true)
     # warp(f, c2)
     H, W, ntheta = size(f)
     coord, rr, tt = c2p_coords_spline(H, W, r_sample_factor, npsi)
 
-    f_extended, coord = extend_f(f, coord)
+    if extend
+        f_extended, coord = extend_f(f, coord)
+    else
+        f_extended, coord = f, coord
+    end
 
     r_sz = size(coord[1],1)
     t_sz = size(coord[1],2)
@@ -152,7 +157,7 @@ Returns the Fourier transform fhat [m, n, p] m:theta, n:phi
 - https://docs.julialang.org/en/v1/manual/documentation/index.html
 - the book by Chirikjian 
 """
-function fft_SE2(f; r_sample_factor=64, use_cont_ft=false)
+function fft_SE2(f; r_sample_factor=16, use_cont_ft=false, bextend=true)
     npsi = size(f, 3)
     bnormalize = false
 
@@ -179,7 +184,7 @@ function fft_SE2(f; r_sample_factor=64, use_cont_ft=false)
     # 2. change cartesian to polar coordinates
     #--------------------------------------------------
     # f1p [r, phi, theta]
-    f1p, pp = convert_c2polar(f1s, npsi, r_sample_factor)
+    f1p, pp = convert_c2polar(f1s, npsi, r_sample_factor, bextend)
 
     mm = Int.(fftshift(fftfreq(size(f1p, 3), size(f1p, 3))))
     nn = Int.(fftshift(fftfreq(size(f1p, 2), size(f1p, 2))))
@@ -200,7 +205,7 @@ function fft_SE2(f; r_sample_factor=64, use_cont_ft=false)
     #--------------------------------------------------
     # 4. psi integration
     #--------------------------------------------------
-    fhat = conj(fftshift( fft(conj(f2), (2)) , (2))) # / size(fhat, 2) # fhat(r,p,q)
+    fhat = conj(fftshift( fft(conj(f2), (2)) , (2))) * 2*pi / ntheta # / size(fhat, 2) # fhat(r,p,q)
     if bnormalize
         # fhat *= (2*pi / size(f2, 2)) # / sqrt(ntheta)
         fhat /= sqrt(ntheta)
@@ -213,7 +218,7 @@ function fft_SE2(f; r_sample_factor=64, use_cont_ft=false)
 end
 
 # inp: fhat_ of shape [m, n, p] (theta, psi, p)
-function adjoint_fft_SE2(fhat_, H, W; mm=nothing, use_cont_ft=false)
+function adjoint_fft_SE2(fhat_, H, W; mm=nothing, use_cont_ft=false, bextend=true)
     bnormalize = false
     if isnothing(mm)
         @assert mod(size(fhat_, 1), 2) == 0
@@ -226,7 +231,7 @@ function adjoint_fft_SE2(fhat_, H, W; mm=nothing, use_cont_ft=false)
     #--------------------------------------------------
     # 4. psi integration
     #--------------------------------------------------
-    f2f = conj(ifft(ifftshift(conj(fhat), (2)), (2)))
+    f2f = conj(ifft(ifftshift(conj(fhat), (2)), (2))) * ntheta / (2*pi)
     # (bnormalize) && (f2f /= (2*pi / size(f2f, 2)))
     (bnormalize) && (f2f *= size(f2f, 2) / sqrt(size(f2f, 2)) )
     
@@ -247,8 +252,11 @@ function adjoint_fft_SE2(fhat_, H, W; mm=nothing, use_cont_ft=false)
     # f1c = convert_p2cart(f1p)
     # global coord, f1p_extended
     coord = p2c_coords_spline(H, W, size(fhat, 1), size(fhat, 2))
-    f1p_extended, coord = extend_f(f1p, coord)
-    # f1p_extended, coord = f1p, coord
+    if bextend
+        f1p_extended, coord = extend_f(f1p, coord)
+    else
+        f1p_extended, coord = f1p, coord
+    end
 
     yy_sz, xx_sz = size(coord[1])
     f_cart_real = zeros(yy_sz, xx_sz, ntheta)
@@ -280,7 +288,7 @@ function adjoint_fft_SE2(fhat_, H, W; mm=nothing, use_cont_ft=false)
 end
 
 # inp: fhat_ of shape [m, n, p] (theta, psi, r)
-function ifft_SE2(fhat_, H, W; mm=nothing, use_cont_ft=false)
+function ifft_SE2(fhat_, H, W; mm=nothing, use_cont_ft=false, bextend=true)
     if isnothing(mm)
         @assert mod(size(fhat_, 1), 2) == 0
         mm = fftshift(Int.(fftfreq(size(fhat_, 1), size(fhat_, 1))))
@@ -320,8 +328,11 @@ function ifft_SE2(fhat_, H, W; mm=nothing, use_cont_ft=false)
     # f1c = convert_p2cart(f1p)
     # r psi theta
     coord = p2c_coords_spline(H, W, size(fhat_, 3), size(fhat_, 2))
-    f1p_extended, coord = extend_f(f1p, coord)
-    # f1p_extended, coord = f1p, coord
+    if bextend
+        f1p_extended, coord = extend_f(f1p, coord)
+    else
+        f1p_extended, coord = f1p, coord
+    end
 
     # f1p_extended /= sqrt(pp_sz)
 
@@ -343,7 +354,7 @@ function ifft_SE2(fhat_, H, W; mm=nothing, use_cont_ft=false)
     else
         f0 = fft(fftshift(fs, (1,2)), (1,2)) # optional
         f0 = ifftshift(f0, (1,2)) 
-        f0 *= 1.0 / sqrt(H*W)
+        f0 *= 1.0 / (H*W)
     end
 
     f = zeros(ComplexF64, size(f0, 1), size(f0, 2), ntheta)
@@ -354,7 +365,7 @@ function ifft_SE2(fhat_, H, W; mm=nothing, use_cont_ft=false)
         f[:,:,itheta] = sum(reshape(factor, 1, 1, :) .* f0, dims=3)
     end
     
-    return f # / (2.0*pi) / 10
+    return f / (2.0*pi) # / 10
 end
 
 

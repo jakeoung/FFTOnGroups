@@ -15,16 +15,17 @@ f_test[10:21, 11:30, 1:10] .= 1.0 + 1.0im
 H, W = size(f_test)
 
 option = 1
+bextend=true
 
 if option == 1
     include(srcdir("SE2.jl"))
 
-    fhat0_test, pp, mm, nn = fft_SE2(f_test) # fhat(m,n,p)
-    @time f1_adjoint = adjoint_fft_SE2(fhat0_test, H, W);
-    @time f1 = ifft_SE2(fhat0_test, H, W);
+    fhat0_test, pp, mm, nn = fft_SE2(f_test; bextend=bextend) # fhat(m,n,p)
+    @time f1_adjoint = adjoint_fft_SE2(fhat0_test, H, W; bextend=bextend);
+    @time f1 = ifft_SE2(fhat0_test, H, W; bextend=bextend);
 
     @show mean(abs.(f1_adjoint .- f_test))
-    # @show mean(abs.(f1 .- f_test))
+    @show mean(abs.(f1 .- f_test))
 elseif option == 2
     include(srcdir("SE2_v0_polar.jl"))
 
@@ -55,7 +56,8 @@ plot(heatmap(real.(f_test[:,:,1]), title="original"),
     heatmap(real.(f1[:,:,1]), title="ifft(fft(f))"))
 
 # plot profiles for the single column
-plot(real.(f_test[11,:,1]), label="original"); plot!(real.(f1_adjoint[11,:,1]), label="adjoint_fft") #plot!(real.(f1[11,:,1]), label="ifft")
+plot(imag.(f_test[11,:,1]), label="original"); plot!(imag.(f1_adjoint[11,:,1]), label="adjoint_fft")
+plot!(imag.(35*f1[11,:,1]), label="ifft")
 
 # function test_conv()
 #     # f_test = zeros(40,40,10)
