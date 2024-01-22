@@ -2,8 +2,6 @@
 
 # Preliminary
 
-Hello world
-
 ## Properties of the Fourier transform on R
 
 ### Compute the inverse Fourier transform via the forward Fourier transform
