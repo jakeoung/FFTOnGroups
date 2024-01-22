@@ -2,7 +2,7 @@ This repository aims to implement Fourier transform on SE(2) group.
 
 Please check `examples` folder.
 
-Usage:
+Usage example:
 
 ```
 # # Example: Fourier transform on SE(2)
