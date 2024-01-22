@@ -10,11 +10,11 @@ Hello world
 
 Let $*$ denotes the conjugation of the function.
 
-$$\widehat{f^{*}}(w) = \hat{f}^*(-w)$$
+$\widehat{f^{*}}(w) = \hat{f}^*(-w)$
 
 This property can be useful to implement the inverse Fourier transform by the Fourier transform:
 
-$$\widehat{f^{*}}^*(w) = \hat{f}(-w)$$
+$\widehat{f^{*}}^*(w) = \hat{f}(-w)$
 
 ```
 inverse_Fourier(f) =  conj(Fourier(conj(f)))
